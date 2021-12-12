@@ -7,6 +7,10 @@
 
 #undef UNICODE
 
+#ifndef NOMINMAX
+    #define NOMINMAX
+#endif
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -99,11 +103,11 @@ public:
 class Renderer
 {
 private:
-    HDC                     device_ctx;
-    uint32_t*               pixels;
+    HDC                     m_deviceCtx;
+    uint32_t*               m_pixels;
     Window*                 window;
-    int32_t                 width, height;
-    BITMAPINFO              bi;
+    int32_t                 m_width, height;
+    BITMAPINFO              m_bitmapInfo;
 
     std::optional<uint32_t> alphaKey = std::nullopt;
 
@@ -132,7 +136,7 @@ public:
     
     void SetBitmapAlphaKey(uint32_t colour);
 
-    void ClearAlphaKey(uint32_t colour);
+    void ClearAlphaKey();
 };
 
 }

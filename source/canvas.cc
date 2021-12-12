@@ -14,19 +14,24 @@ namespace Canvas
 
 BMPImage::BMPImage(const char* path) 
 {
-    BITMAPFILEHEADER header  = {0};
-    BITMAPINFOHEADER info    = {0};
-    uint8_t*         tmpBmp  = NULL;
+    BITMAPFILEHEADER header  = {};
+    BITMAPINFOHEADER info    = {};
+    FILE* fPtr = NULL;
 
-    FILE* fptr = fopen(path, "rb");
-    if (!fptr) 
+#ifdef _MSC_VER
+    fopen_s(&fPtr, path, "rb");
+#else
+    fPtr = fopen(path, "rb");
+#endif
+
+    if (!fPtr) 
     { 
         m_error = BMP_IMG_NOT_FOUND;
         return;
     }
 
-    fread(&header, sizeof(BITMAPFILEHEADER), 1, fptr);
-    fread(&info, sizeof(BITMAPINFOHEADER), 1, fptr);
+    fread(&header, sizeof(BITMAPFILEHEADER), 1, fPtr);
+    fread(&info, sizeof(BITMAPINFOHEADER), 1, fPtr);
 
     if (memcmp(&header.bfType, "BM", 2)) 
     {
@@ -47,16 +52,16 @@ BMPImage::BMPImage(const char* path)
     m_width  = info.biWidth;
     m_pixels = new uint8_t[dwImageSize];
     
-    fseek(fptr, header.bfOffBits, SEEK_SET);
+    fseek(fPtr, header.bfOffBits, SEEK_SET);
 
     auto ptr = m_pixels;
-    int read = 0;
+    size_t read = 0;
     for (int i = 0; i < m_height; ++i ) 
     {
-        read += fread(&ptr[read], 1, m_width * 3, fptr);
+        read += fread(&ptr[read], 1, m_width * 3, fPtr);
         auto mod = (m_width * 3 % 4);
         if (mod)
-            fseek(fptr, 4 - mod, SEEK_CUR);
+            fseek(fPtr, 4 - mod, SEEK_CUR);
     }
 
     if (read != dwImageSize)
@@ -65,7 +70,7 @@ BMPImage::BMPImage(const char* path)
         return;
     }
 
-    fclose(fptr);
+    fclose(fPtr);
 
     m_error = BMP_IMG_OK;
 }
@@ -94,6 +99,8 @@ LRESULT WINAPI Window::s_wnd_proc(HWND win, UINT msg, WPARAM wparam, LPARAM lpar
 
 LRESULT WINAPI Window::wnd_proc(HWND win, UINT msg, WPARAM wparam, LPARAM lparam)
 {
+    (void)wparam;
+
     static int mx0 = 0, my0 = 0;
     switch (msg)
     {
@@ -146,7 +153,7 @@ LRESULT WINAPI Window::wnd_proc(HWND win, UINT msg, WPARAM wparam, LPARAM lparam
 Window::Window(int32_t width, int32_t height, const char *const title)
 {
 
-    WNDCLASSEXA wclassex   = {0};
+    WNDCLASSEXA wclassex   = {};
     wclassex.cbSize        = sizeof(wclassex);
     wclassex.hInstance     = GetModuleHandleA(NULL);
     wclassex.lpfnWndProc   = s_wnd_proc;
@@ -215,48 +222,48 @@ Window::~Window()
 
 Renderer::Renderer(const Window* window)
 {
-    device_ctx = window->GetDCHandle();
-    width      = window->GetWidth();
+    m_deviceCtx = window->GetDCHandle();
+    m_width      = window->GetWidth();
     height     = window->GetHeight();
-    pixels     = new uint32_t[width * height];
+    m_pixels     = new uint32_t[m_width * height];
 
-    bi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
-    bi.bmiHeader.biWidth       = width;
-    bi.bmiHeader.biHeight      = height;
-    bi.bmiHeader.biPlanes      = 1;
-    bi.bmiHeader.biCompression = BI_RGB;
-    bi.bmiHeader.biBitCount    = sizeof(*pixels)*8;
+    m_bitmapInfo.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
+    m_bitmapInfo.bmiHeader.biWidth       = m_width;
+    m_bitmapInfo.bmiHeader.biHeight      = height;
+    m_bitmapInfo.bmiHeader.biPlanes      = 1;
+    m_bitmapInfo.bmiHeader.biCompression = BI_RGB;
+    m_bitmapInfo.bmiHeader.biBitCount    = sizeof(*m_pixels)*8;
 }
 
 void Renderer::Present()
 {
-    if (!pixels) { puts("No buffer [pixels p]"); return ;}
+    if (!m_pixels) { puts("No buffer [pixels p]"); return ;}
     SetDIBitsToDevice(
-            device_ctx,
+            m_deviceCtx,
             0, 0,
-            width,
+            m_width,
             height,
             0, 0, 0,
             height,
-            (void*)pixels,
-            &bi,
+            (void*)m_pixels,
+            &m_bitmapInfo,
             DIB_RGB_COLORS
             );
 }
 
 void Renderer::ClearColour(uint32_t colour)
 {
-    if (!pixels) { puts("No buffer [pixels]"); return; }
-    for (int i = 0; i < width * height; ++i)
-        pixels[i] = colour;
+    if (!m_pixels) { puts("No buffer [pixels]"); return; }
+    for (int i = 0; i < m_width * height; ++i)
+        m_pixels[i] = colour;
 }
 
 void Renderer::DrawPixel(int32_t x, int32_t y, uint32_t colour)
 {
     if ((x | y) < 0) return;
-    if (x >= width || y >= height) return;
+    if (x >= m_width || y >= height) return;
 
-    pixels[x + y * width] = colour;
+    m_pixels[x + y * m_width] = colour;
 }
 
 void Renderer::DrawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1,  uint32_t colour)
@@ -386,7 +393,7 @@ void Renderer::SetBitmapAlphaKey(uint32_t colour)
     alphaKey = std::make_optional<uint32_t>(colour);
 }
 
-void Renderer::ClearAlphaKey(uint32_t colour)
+void Renderer::ClearAlphaKey()
 {
     alphaKey.reset();
     alphaKey = std::nullopt;
@@ -394,7 +401,7 @@ void Renderer::ClearAlphaKey(uint32_t colour)
 
 Renderer::~Renderer()
 {
-    delete[] pixels;
+    delete[] m_pixels;
 }
 
 }
